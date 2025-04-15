@@ -174,12 +174,34 @@ const ActionList = memo(({ actions }: ActionListProps) => {
                 ) : null}
               </div>
               {type === 'shell' && (
-                <ShellCodeBlock
-                  classsName={classNames('mt-1', {
-                    'mb-3.5': !isLast,
-                  })}
-                  code={content}
-                />
+                action.content && action.content.includes('xdg-open') && action.content.includes('entri') ? (
+                  <button 
+                    onClick={() => {
+                      try {
+                        const parts = action.content.split('xdg-open ');
+                        if (parts.length > 1) {
+                          const url = parts[1].trim();
+                          if (url) {
+                            window.open(url, '_blank');
+                            return;
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Error opening URL:', error);
+                      }
+                    }}
+                    className="mt-3 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition-colors duration-150 text-center"
+                  >
+                    {action.content.includes('existing domain') ? 'Set up DNS' : 'Buy with Entri'}
+                  </button>
+                ) : (
+                  <ShellCodeBlock
+                    classsName={classNames('mt-1', {
+                      'mb-3.5': !isLast,
+                    })}
+                    code={content}
+                  />
+                )
               )}
             </motion.li>
           );

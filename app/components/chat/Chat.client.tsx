@@ -12,6 +12,8 @@ import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
+import type { SharingLinks } from '~/types/entri';
+import { distance as levenshteinDistance } from 'fastest-levenshtein'; 
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -67,7 +69,18 @@ interface ChatProps {
 export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProps) => {
   useShortcuts();
 
+  const isValidNetlifyHostname = (hostname: string | null): boolean => {
+    if (!hostname) return false;
+    
+    // Check if it's a valid netlify.app subdomain
+    const netlifyRegex = /^[a-zA-Z0-9-]+\.netlify\.app$/;
+    return netlifyRegex.test(hostname);
+  };
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const processedUserMessageIdRef = useRef<string | null>(null); 
+
 
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
 
@@ -83,9 +96,167 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
     },
     onFinish: () => {
       logger.debug('Finished streaming');
-    },
+      },
     initialMessages,
   });
+  useEffect(() => {
+    if (!isLoading && messages.length > 1) {
+      const lastMessage = messages[messages.length - 1];
+      const secondLastMessage = messages[messages.length - 2];
+
+      if (
+        lastMessage.role === 'assistant' && 
+        secondLastMessage?.role === 'user' &&
+        secondLastMessage.id !== processedUserMessageIdRef.current &&
+        !chatStore.get().aborted
+      ) { 
+        if (lastMessage.content.includes("To easily point your existing domain")) {
+          processedUserMessageIdRef.current = secondLastMessage.id;
+          return; 
+        }
+
+        let netlifyHostname = null;
+        const netlifyRegex = /https?:\/\/([a-zA-Z0-9-]+\.netlify\.app)/;
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const message = messages[i];
+          if (message.role === 'assistant') {
+            const netlifyMatch = message.content.match(netlifyRegex);
+            if (netlifyMatch && netlifyMatch[1]) {
+              netlifyHostname = netlifyMatch[1];
+              break;
+            }
+          }
+        }
+        
+        if (netlifyHostname && isValidNetlifyHostname(netlifyHostname)) {
+          const urlIndex = lastMessage.content.indexOf(netlifyHostname);
+          const contextWindow = lastMessage.content.substring(
+            Math.max(0, urlIndex - 100), 
+            Math.min(lastMessage.content.length, urlIndex + netlifyHostname.length + 100)
+          ).toLowerCase();
+          
+          const deploymentIndicators = ["deployed", "live", "site is", "available at","deployed to netlify"];
+          
+          if (deploymentIndicators.some(phrase => contextWindow.includes(phrase))) {
+            logger.debug(`Found Netlify deployment: ${netlifyHostname}`);
+          }
+        } else {
+          return;
+        }
+
+        const userContent = secondLastMessage.content.toLowerCase();
+        
+        const primaryPhrases = [
+          "deploy this application",
+          "deploy this app",
+          "deploy the application",
+          "deploy the app", 
+          "deploy it",
+          "how to deploy",
+          "how do i deploy",
+          "deploy to netlify",
+          "publish to netlify",
+          "publish",
+          "deploy",
+          "deployment",
+          "want to deploy",
+          "want to deploy to netlify",
+          "want to publish to netlify",
+        ];
+        
+        let mentionsDeployment = primaryPhrases.some(phrase => 
+          userContent.includes(phrase)
+        );
+        
+        // If no exact match, use Levenshtein distance to catch typos and variations
+        if (!mentionsDeployment) {
+          const words = userContent.split(/\s+/);
+          const LEVENSHTEIN_THRESHOLD = 2;
+          
+          for (const word of words) {
+            if (word.length < 4) continue;
+            
+            for (const phrase of primaryPhrases) {
+              const phraseWords = phrase.split(/\s+/);
+              
+              for (const phraseWord of phraseWords) {
+                if (phraseWord.length < 4) continue;
+                
+                if (levenshteinDistance(word, phraseWord) <= LEVENSHTEIN_THRESHOLD) {
+                  logger.debug(`Levenshtein match: "${word}" similar to "${phraseWord}"`);
+                  mentionsDeployment = true;
+                  break;
+                }
+              }
+              
+              if (mentionsDeployment) break;
+            }
+            
+            if (mentionsDeployment) break;
+          }
+        }
+        
+        if (!mentionsDeployment && userContent.includes("deploy")) {
+          const deployContextWords = ["site", "website", "app", "application", "online", "live"];
+          mentionsDeployment = deployContextWords.some(word => userContent.includes(word));
+        }
+
+        if (!mentionsDeployment && netlifyHostname) {
+          mentionsDeployment = true;
+        }
+
+        if (mentionsDeployment) {
+          processedUserMessageIdRef.current = secondLastMessage.id; 
+          
+          setTimeout(async () => {
+            try {
+              const body = netlifyHostname 
+                ? { hostname: netlifyHostname }
+                : {};
+                
+              const response = await fetch('/api/entri-links', {
+                method: 'POST',
+                body: JSON.stringify(body),
+              });
+              if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+              }
+              const links: SharingLinks = await response.json();
+
+              if (links.connectLink || links.sellLink) {
+                const linksMessage = `<strong>Need to connect your domain to Netlify?</strong>
+Entri can help you set up DNS in just a few clicks.
+
+👉 <strong>Use your existing domain</strong>
+We'll configure the DNS records for you.
+
+<a href="${links.connectLink || '#'}">Set up DNS</a>
+or
+🌐 <strong>Get a new domain — totally FREE!</strong>
+Grab a free domain and we'll set up all the DNS for Netlify, instantly.
+
+<a href="${links.sellLink || '#'}" target="_blank">Claim your free domain</a>`;
+                
+                append({
+                  role: 'assistant',
+                  content: linksMessage,
+                }); 
+              } else {
+                logger.debug('No valid links received from API.');
+              }
+            } catch (error) {
+              logger.error('Failed to fetch Entri links', error);
+            }
+          }, 1000);
+        } else {
+          processedUserMessageIdRef.current = secondLastMessage.id;
+        }
+      }
+    }
+  }, [messages, isLoading, append]); 
+
+
 
   const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
   const { parsedMessages, parseMessages } = useMessageParser();
