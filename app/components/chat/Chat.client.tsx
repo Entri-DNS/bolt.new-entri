@@ -13,6 +13,7 @@ import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import type { SharingLinks } from '~/types/entri';
+import { distance as levenshteinDistance } from 'fastest-levenshtein';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -150,8 +151,60 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           
           if (latestNetlifyHostname) break; // Stop scanning if we found a valid hostname
         }
+
+        const userContent = secondLastMessage.content.toLowerCase();
         
-        if (latestNetlifyHostname) {
+        const primaryPhrases = [
+          "deploy this application",
+          "deploy this app",
+          "deploy the application",
+          "deploy the app", 
+          "deploy it",
+          "how to deploy",
+          "how do i deploy",
+          "deploy to netlify",
+          "publish to netlify",
+          "publish",
+          "deploy",
+          "deployment",
+          "want to deploy",
+          "want to deploy to netlify",
+          "want to publish to netlify",
+        ];
+        
+        let mentionsDeployment = primaryPhrases.some(phrase => 
+          userContent.includes(phrase)
+        );
+        
+        // If no exact match, use Levenshtein distance to catch typos and variations
+        if (!mentionsDeployment) {
+          const words = userContent.split(/\s+/);
+          const LEVENSHTEIN_THRESHOLD = 2;
+          
+          for (const word of words) {
+            if (word.length < 4) continue;
+            
+            for (const phrase of primaryPhrases) {
+              const phraseWords = phrase.split(/\s+/);
+              
+              for (const phraseWord of phraseWords) {
+                if (phraseWord.length < 4) continue;
+                
+                if (levenshteinDistance(word, phraseWord) <= LEVENSHTEIN_THRESHOLD) {
+                  logger.debug(`Levenshtein match: "${word}" similar to "${phraseWord}"`);
+                  mentionsDeployment = true;
+                  break;
+                }
+              }
+              
+              if (mentionsDeployment) break;
+            }
+            
+            if (mentionsDeployment) break;
+          }
+        }
+        
+        if (mentionsDeployment && latestNetlifyHostname) {
           logger.debug(`Found Netlify deployment: ${latestNetlifyHostname}`);
           processedUserMessageIdRef.current = secondLastMessage.id;
           
