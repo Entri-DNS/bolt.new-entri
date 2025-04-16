@@ -114,40 +114,60 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           return; 
         }
 
-        // First check for Netlify deployment in the assistant's message
-        let netlifyHostname: string | null = null;
-        const netlifyRegex = /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/i;
-        const deploymentIndicators = ["deployed", "live", "site is", "available at", "deployed to netlify"];
-        const netlifyMatch = lastMessage.content.match(netlifyRegex);
-        if (netlifyMatch && netlifyMatch[1] && isValidNetlifyHostname(netlifyMatch[1])) {
-          netlifyHostname = netlifyMatch[1];
+        // Check all previous messages for Netlify deployment links
+        let latestNetlifyHostname: string | null = null;
+        const netlifyRegex = /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/gi;
+        const deploymentIndicators = ["deployed", "live", "site is", "available at", "deployed to netlify", "netlify app","deployment"];
+        
+        // Scan through all assistant messages in reverse order (newest first)
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const message = messages[i];
+          if (message.role !== 'assistant') continue;
           
-          // Check if the message context suggests this is a deployment
-          const urlIndex = lastMessage.content.indexOf(netlifyHostname);
-          const contextWindow = lastMessage.content.substring(
-            Math.max(0, urlIndex - 100), 
-            Math.min(lastMessage.content.length, urlIndex + netlifyHostname.length + 100)
-          ).toLowerCase();
+          // Reset regex to start fresh for each message
+          netlifyRegex.lastIndex = 0;
+          let match;
           
-          const isDeploymentMessage = deploymentIndicators.some(phrase => contextWindow.includes(phrase));
+          // Find all Netlify hostnames in this message
+          while ((match = netlifyRegex.exec(message.content)) !== null) {
+            const hostname = match[1];
+            if (isValidNetlifyHostname(hostname)) {
+              // Check if the context suggests this is a deployment message
+              const urlIndex = message.content.indexOf(hostname, match.index);
+              const contextWindow = message.content.substring(
+                Math.max(0, urlIndex - 100), 
+                Math.min(message.content.length, urlIndex + hostname.length + 100)
+              ).toLowerCase();
+              
+              const isDeploymentMessage = deploymentIndicators.some(phrase => contextWindow.includes(phrase));
+              
+              if (isDeploymentMessage) {
+                latestNetlifyHostname = hostname;
+                break; // Found a valid hostname in this message
+              }
+            }
+          }
           
-          if (isDeploymentMessage) {
-            logger.debug(`Found Netlify deployment: ${netlifyHostname}`);
-            processedUserMessageIdRef.current = secondLastMessage.id;
-            
-            setTimeout(async () => {
-              try {
-                const response = await fetch('/api/entri-links', {
-                  method: 'POST',
-                  body: JSON.stringify({ hostname: netlifyHostname }),
-                });
-                if (!response.ok) {
-                  throw new Error(`API request failed with status ${response.status}`);
-                }
-                const links: SharingLinks = await response.json();
+          if (latestNetlifyHostname) break; // Stop scanning if we found a valid hostname
+        }
+        
+        if (latestNetlifyHostname) {
+          logger.debug(`Found Netlify deployment: ${latestNetlifyHostname}`);
+          processedUserMessageIdRef.current = secondLastMessage.id;
+          
+          setTimeout(async () => {
+            try {
+              const response = await fetch('/api/entri-links', {
+                method: 'POST',
+                body: JSON.stringify({ hostname: latestNetlifyHostname }),
+              });
+              if (!response.ok) {
+                throw new Error(`API request failed with status ${response.status}`);
+              }
+              const links: SharingLinks = await response.json();
 
-                if (links.connectLink || links.sellLink) {
-                  const linksMessage = `<strong>Need to connect your domain to Netlify?</strong>
+              if (links.connectLink || links.sellLink) {
+                const linksMessage = `<strong>Need to connect your domain to Netlify?</strong>
 Entri can help you set up DNS in just a few clicks.
 
 👉 <strong>Use your existing domain</strong>
@@ -159,20 +179,19 @@ or
 Grab a free domain and we'll set up all the DNS for Netlify, instantly.
 
 <a href="${links.sellLink || '#'}" target="_blank">Claim your free domain</a>`;
-                  
-                  append({
-                    role: 'assistant',
-                    content: linksMessage,
-                  }); 
-                } else {
-                  logger.debug('No valid links received from API.');
-                }
-              } catch (error) {
-                logger.error('Failed to fetch Entri links', error);
+                
+                append({
+                  role: 'assistant',
+                  content: linksMessage,
+                }); 
+              } else {
+                logger.debug('No valid links received from API.');
               }
-            }, 1000);
-            return;
-          }
+            } catch (error) {
+              logger.error('Failed to fetch Entri links', error);
+            }
+          }, 1000);
+          return;
         }
         
         // If we get here, we didn't find a clear Netlify deployment message
