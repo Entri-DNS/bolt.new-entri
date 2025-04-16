@@ -69,7 +69,10 @@ export default async function handleRequest(
   responseHeaders.set('Content-Type', 'text/html');
 
   responseHeaders.set('Cross-Origin-Embedder-Policy', 'require-corp');
-  responseHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+  responseHeaders.set('Cross-Origin-Opener-Policy', 'cross-origin');
+
+  responseHeaders.set('Access-Control-Allow-Origin', 'https://app.goentri.com');
+  responseHeaders.set('Cross-Origin-Resource-Policy', 'cross-origin');
 
   return new Response(body, {
     headers: responseHeaders,

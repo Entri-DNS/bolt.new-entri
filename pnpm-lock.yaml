@@ -113,6 +113,9 @@ importers:
       diff:
         specifier: ^5.2.0
         version: 5.2.0
+      entrijs:
+        specifier: ^0.0.6
+        version: 0.0.6
       fastest-levenshtein:
         specifier: ^1.0.16
         version: 1.0.16
@@ -2576,6 +2579,9 @@ packages:
   entities@4.5.0:
     resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
     engines: {node: '>=0.12'}
+
+  entrijs@0.0.6:
+    resolution: {integrity: sha512-je7RK4Z0IxopIR8kIRoJ68lEoYFPV1vagVyJAMv2R5BdL1DwZ2F034HKex3Mic8Rqe0CShZYH73eVqGCfQSZxA==}
 
   err-code@2.0.3:
     resolution: {integrity: sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==}
@@ -7781,6 +7787,10 @@ snapshots:
       once: 1.4.0
 
   entities@4.5.0: {}
+
+  entrijs@0.0.6:
+    dependencies:
+      react: 18.3.1
 
   err-code@2.0.3: {}
 

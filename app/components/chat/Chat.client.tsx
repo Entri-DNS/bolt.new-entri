@@ -12,7 +12,8 @@ import { fileModificationsToHTML } from '~/utils/diff';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
-import type { SharingLinks } from '~/types/entri';
+import type { EntriConfig, EntriResponse } from '~/types/entri';
+import { entriStore } from '~/lib/stores/entri';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -68,17 +69,11 @@ interface ChatProps {
 export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProps) => {
   useShortcuts();
 
-  const isValidNetlifyHostname = (hostname: string | null): boolean => {
-    if (!hostname) return false;
-    
-    // Check if it's a valid netlify.app subdomain
-    const netlifyRegex = /^[a-zA-Z0-9-]+\.netlify\.app$/;
-    return netlifyRegex.test(hostname);
-  };
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const processedUserMessageIdRef = useRef<string | null>(null); 
+
+  const { entriConnectConfig, entriSellConfig } = useStore(entriStore);
 
 
   const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
@@ -115,23 +110,26 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
         }
 
         // First check for Netlify deployment in the assistant's message
-        let netlifyHostname: string | null = null;
-        const netlifyRegex = /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/i;
-        const deploymentIndicators = ["deployed", "live", "site is", "available at", "deployed to netlify"];
-        const netlifyMatch = lastMessage.content.match(netlifyRegex);
-        if (netlifyMatch && netlifyMatch[1] && isValidNetlifyHostname(netlifyMatch[1])) {
-          netlifyHostname = netlifyMatch[1];
+        let netlifyHostname: string = "";
+        let messageContent: string = "";
+        const netlifyRegex =  /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/i;
+
+       
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const message = messages[i];
+          if (message.role === 'assistant') {
+            const netlifyMatch = message.content.match(netlifyRegex);
+            if (netlifyMatch && netlifyMatch[1]) {
+              netlifyHostname = netlifyMatch[1];
+              messageContent = message.content;
+              break;
+            }
+          }
+        }
+        if (netlifyHostname) {          
+          const deploymentIndicators = ["deployed", "live", "site is", "available at","deployed to netlify","deployment"];
           
-          // Check if the message context suggests this is a deployment
-          const urlIndex = lastMessage.content.indexOf(netlifyHostname);
-          const contextWindow = lastMessage.content.substring(
-            Math.max(0, urlIndex - 100), 
-            Math.min(lastMessage.content.length, urlIndex + netlifyHostname.length + 100)
-          ).toLowerCase();
-          
-          const isDeploymentMessage = deploymentIndicators.some(phrase => contextWindow.includes(phrase));
-          
-          if (isDeploymentMessage) {
+          if (deploymentIndicators.some(phrase => messageContent.includes(phrase))) {
             logger.debug(`Found Netlify deployment: ${netlifyHostname}`);
             processedUserMessageIdRef.current = secondLastMessage.id;
             
@@ -144,21 +142,67 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                 if (!response.ok) {
                   throw new Error(`API request failed with status ${response.status}`);
                 }
-                const links: SharingLinks = await response.json();
+                const entriResponse: EntriResponse = await response.json();
 
-                if (links.connectLink || links.sellLink) {
+                if (entriResponse.authToken) {
+                  const entriConnectConfig: EntriConfig = {
+                    "applicationId": entriResponse.applicationId,
+                    "token": entriResponse.authToken,
+                    "userId": netlifyHostname!.split('.')[0],
+                    "dnsRecords": {
+                      "domain": [
+                        {
+                          "type": "A",
+                          "host": "@",
+                          "value": "75.2.60.5",
+                          "ttl": 300
+                        },
+                        {
+                          "type": "CNAME",
+                          "host": "www",
+                          "value": netlifyHostname!,
+                          "ttl": 300
+                        }
+                      ],
+                      "subDomain": [
+                        {
+                          "type": "CNAME",
+                          "host": "{SUBDOMAIN}",
+                          "value": netlifyHostname!,
+                          "ttl": 300
+                        }
+                      ]
+                    },
+                    "applicationName": "Netlify",
+                    "manualSetupDocumentation": "https://docs.netlify.com/domains/configure-domains/configure-external-dns/",
+                  }
+                  
+                  const entriSellConfig = {
+                    ...entriConnectConfig,
+                    sellVersion: "v3"
+                  };
+                  
+                  // Properly JSON stringify the objects, with proper escaping
+                  const connectConfigString = JSON.stringify(entriConnectConfig).replace(/'/g, "\\'");
+                  const sellConfigString = JSON.stringify(entriSellConfig).replace(/'/g, "\\'");
+                  
+                  // Create properly escaped javascript: URLs
+                  const entriConnectConfigScript = encodeURI(`javascript:(function(){window.entri&&window.entri.showEntri(${connectConfigString});})()`) 
+                  const entriSellConfigScript = encodeURI(`javascript:(function(){window.entri&&window.entri.purchaseDomain(${sellConfigString});})()`)
+                  
+                  entriStore.setKey('entriConnectConfig', entriConnectConfigScript);
+                  entriStore.setKey('entriSellConfig', entriSellConfigScript);
+
+                  // Store the script in a store
                   const linksMessage = `<strong>Need to connect your domain to Netlify?</strong>
-Entri can help you set up DNS in just a few clicks.
+  We'll configure the DNS records for you.
 
-👉 <strong>Use your existing domain</strong>
-We'll configure the DNS records for you.
+  <a id="entri-connect-link">Set up DNS</a>
+  or
+  🌐 <strong>Get a new domain — totally FREE!</strong>
+  Grab a free domain and we'll set up all the DNS for Netlify, instantly.
 
-<a href="${links.connectLink || '#'}">Set up DNS</a>
-or
-🌐 <strong>Get a new domain — totally FREE!</strong>
-Grab a free domain and we'll set up all the DNS for Netlify, instantly.
-
-<a href="${links.sellLink || '#'}" target="_blank">Claim your free domain</a>`;
+  <a id="entri-sell-link">Claim your free domain</a>`;
                   
                   append({
                     role: 'assistant',
@@ -171,9 +215,10 @@ Grab a free domain and we'll set up all the DNS for Netlify, instantly.
                 logger.error('Failed to fetch Entri links', error);
               }
             }, 1000);
-            return;
           }
+          return;
         }
+        
         
         // If we get here, we didn't find a clear Netlify deployment message
         processedUserMessageIdRef.current = secondLastMessage.id;

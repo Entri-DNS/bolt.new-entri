@@ -57,6 +57,7 @@
     "ai": "^3.3.4",
     "date-fns": "^3.6.0",
     "diff": "^5.2.0",
+    "entrijs": "^0.0.6",
     "fastest-levenshtein": "^1.0.16",
     "framer-motion": "^11.2.12",
     "isbot": "^4.1.0",

@@ -5,9 +5,9 @@ import { createScopedLogger } from '~/utils/logger';
 import { rehypePlugins, remarkPlugins, allowedHTMLElements } from '~/utils/markdown';
 import { Artifact } from './Artifact';
 import { CodeBlock } from './CodeBlock';
-
 import styles from './Markdown.module.scss';
-
+import { entriStore } from '~/lib/stores/entri';
+import { useStore } from '@nanostores/react';
 const logger = createScopedLogger('MarkdownComponent');
 
 interface MarkdownProps {
@@ -19,6 +19,7 @@ interface MarkdownProps {
 export const Markdown = memo(({ children, html = false, limitedMarkdown = false }: MarkdownProps) => {
   logger.trace('Render');
 
+  const { entriConnectConfig, entriSellConfig } = useStore(entriStore);
   const components = useMemo(() => {
     return {
       div: ({ className, children, node, ...props }) => {
@@ -57,11 +58,30 @@ export const Markdown = memo(({ children, html = false, limitedMarkdown = false 
 
         return <pre {...rest}>{children}</pre>;
       },
-      a: ({ className, children, ...props }) => (
-        <a className={`inline-block mb-4 px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text bg-font-medium rounded transition-colors duration-150 ${className || ''}`} target="_blank" {...props}>
-          {children}
-        </a>
-      ),
+      a: ({ className, children, ...props }) => {
+        if (props.id?.includes('entri-connect-link')) {
+          return (
+            <span
+              className={`inline-block mb-4 px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text bg-font-medium rounded transition-colors duration-150 cursor-pointer ${className || ''}`}
+              dangerouslySetInnerHTML={{
+                __html: `<a href="${entriConnectConfig}" id="${props.id}">${Array.isArray(children) ? children.join('') : children}</a>`
+              }}
+              {...props}
+            />
+          );
+        } else if (props.id?.includes('entri-sell-link')) {
+          return (
+            <span
+              className={`inline-block mb-4 px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text bg-font-medium rounded transition-colors duration-150 cursor-pointer ${className || ''}`}
+              dangerouslySetInnerHTML={{
+                __html: `<a href="${entriSellConfig}" id="${props.id}">${Array.isArray(children) ? children.join('') : children}</a>`
+              }}
+              {...props}
+            />
+          );
+        }
+        return <a className={className} {...props}>{children}</a>
+      },
     } satisfies Components;
   }, []);
 
