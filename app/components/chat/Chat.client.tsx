@@ -116,9 +116,8 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
 
         // First check for Netlify deployment in the assistant's message
         let netlifyHostname: string | null = null;
-        const netlifyRegex = /https?:\/\/([a-zA-Z0-9-]+\.netlify\.app)/;
+        const netlifyRegex = /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/i;
         const deploymentIndicators = ["deployed", "live", "site is", "available at", "deployed to netlify"];
-        
         const netlifyMatch = lastMessage.content.match(netlifyRegex);
         if (netlifyMatch && netlifyMatch[1] && isValidNetlifyHostname(netlifyMatch[1])) {
           netlifyHostname = netlifyMatch[1];
