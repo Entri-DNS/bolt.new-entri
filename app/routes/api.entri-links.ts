@@ -49,7 +49,7 @@ async function entriLinksAction({ context, request }: ActionFunctionArgs) {
     try {
         
         // 1. Get auth token
-        const tokenResponse = await fetch('https://api.goentri.com/token', {
+        const tokenResponse = await fetch('https://api.goentri.com/dev/token', {
             method: 'POST',
             body: JSON.stringify({
                 "applicationId": entriAppId,

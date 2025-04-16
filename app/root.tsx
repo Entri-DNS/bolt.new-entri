@@ -59,7 +59,7 @@ export const Head = createHead(() => (
     <Meta />
     <Links />
     <script dangerouslySetInnerHTML={{ __html: inlineThemeCode }} />
-    <script src="https://cdn.goentri.com/entri.js" crossOrigin="anonymous"></script>
+    <script src="https://cdn.goentri.com/dev/entri.js" crossOrigin="anonymous"></script>
   </>
 ));
 
