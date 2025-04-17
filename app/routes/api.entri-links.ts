@@ -49,15 +49,16 @@ async function entriLinksAction({ context, request }: ActionFunctionArgs) {
     try {
         
         // 1. Get auth token
-        const tokenResponse = await fetch('https://api.goentri.com/dev/token', {
+        const tokenResponse = await fetch('https://api.goentri.com/token', {
             method: 'POST',
             body: JSON.stringify({
                 "applicationId": entriAppId,
                 "secret": entriAppSecret,
                 "domain": "",
-                "dnsRecords": [
-                    {
-                        "type": "A",
+                "dnsRecords": {
+                    "domain": [
+                        {
+                            "type": "A",
                         "host": "@",
                         "value": "75.2.60.5",
                         "ttl": 300
@@ -67,12 +68,20 @@ async function entriLinksAction({ context, request }: ActionFunctionArgs) {
                         "host": "www",
                         "value": `${hostname}`,
                         "ttl": 300
-                    }                  
-                ],
+                        }                  
+                    ],
+                    "subDomain": [
+                        {
+                            "type": "CNAME",
+                            "host": "{SUBDOMAIN}",
+                            "value": `${hostname}`,
+                            "ttl": 300
+                        }
+                    ],
+                },
                 freeDomain: true
             }),
         });
-        
         const authTokenData = await validateApiResponse(tokenResponse, 'auth token') as AuthTokenResponse;
         const authToken = authTokenData.auth_token;
 

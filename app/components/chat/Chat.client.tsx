@@ -143,7 +143,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                   throw new Error(`API request failed with status ${response.status}`);
                 }
                 const entriResponse: EntriResponse = await response.json();
-
                 if (entriResponse.authToken) {
                   const entriConnectConfig: EntriConfig = {
                     "applicationId": entriResponse.applicationId,
