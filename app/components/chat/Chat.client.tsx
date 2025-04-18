@@ -14,6 +14,7 @@ import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
 import type { EntriConfig, EntriResponse } from '~/types/entri';
 import { entriStore } from '~/lib/stores/entri';
+import { distance as levenshteinDistance } from 'fastest-levenshtein';
 
 const toastAnimation = cssTransition({
   enter: 'animated fadeInRight',
@@ -109,35 +110,103 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           return; 
         }
 
-        // First check for Netlify deployment in the assistant's message
-        let netlifyHostname: string = "";
-        let messageContent: string = "";
-        const netlifyRegex =  /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/i;
+        // Check all previous messages for Netlify deployment links
+        let latestNetlifyHostname: string | null = null;
+        const netlifyRegex = /https?:\/\/([a-zA-Z0-9][-a-zA-Z0-9]*\.netlify\.app)/gi;
+        const deploymentIndicators = ["deployed", "live", "site is", "available at", "deployed to netlify", "netlify app","deployment"];
 
-       
+        // Scan through all assistant messages in reverse order (newest first)
         for (let i = messages.length - 1; i >= 0; i--) {
           const message = messages[i];
-          if (message.role === 'assistant') {
-            const netlifyMatch = message.content.match(netlifyRegex);
-            if (netlifyMatch && netlifyMatch[1]) {
-              netlifyHostname = netlifyMatch[1];
-              messageContent = message.content;
-              break;
+          if (message.role !== 'assistant') continue;
+
+          // Reset regex to start fresh for each message
+          netlifyRegex.lastIndex = 0;
+          let match;
+
+          // Find all Netlify hostnames in this message
+          while ((match = netlifyRegex.exec(message.content)) !== null) {
+            const hostname = match[1];
+              // Check if the context suggests this is a deployment message
+              const urlIndex = message.content.indexOf(hostname, match.index);
+              const contextWindow = message.content.substring(
+                Math.max(0, urlIndex - 100), 
+                Math.min(message.content.length, urlIndex + hostname.length + 100)
+              ).toLowerCase();
+
+              const isDeploymentMessage = deploymentIndicators.some(phrase => contextWindow.includes(phrase));
+
+              if (isDeploymentMessage) {
+                latestNetlifyHostname = hostname;
+                break; // Found a valid hostname in this message
+              }
+          }
+
+          if (latestNetlifyHostname) break; // Stop scanning if we found a valid hostname
+        }
+
+        const userContent = secondLastMessage.content.toLowerCase();
+
+        const primaryPhrases = [
+          "deploy this application",
+          "deploy this app",
+          "deploy the application",
+          "deploy the app", 
+          "deploy it",
+          "how to deploy",
+          "how do i deploy",
+          "deploy to netlify",
+          "publish to netlify",
+          "publish",
+          "deploy",
+          "deployment",
+          "want to deploy",
+          "want to deploy to netlify",
+          "want to publish to netlify",
+        ];
+
+        let mentionsDeployment = primaryPhrases.some(phrase => 
+          userContent.includes(phrase)
+        );
+
+        // If no exact match, use Levenshtein distance to catch typos and variations
+        if (!mentionsDeployment) {
+          const words = userContent.split(/\s+/);
+          const LEVENSHTEIN_THRESHOLD = 2;
+
+          for (const word of words) {
+            if (word.length < 4) continue;
+
+            for (const phrase of primaryPhrases) {
+              const phraseWords = phrase.split(/\s+/);
+
+              for (const phraseWord of phraseWords) {
+                if (phraseWord.length < 4) continue;
+
+                if (levenshteinDistance(word, phraseWord) <= LEVENSHTEIN_THRESHOLD) {
+                  logger.debug(`Levenshtein match: "${word}" similar to "${phraseWord}"`);
+                  mentionsDeployment = true;
+                  break;
+                }
+              }
+
+              if (mentionsDeployment) break;
             }
+
+            if (mentionsDeployment) break;
           }
         }
-        if (netlifyHostname) {          
-          const deploymentIndicators = ["deployed", "live", "site is", "available at","deployed to netlify","deployment"];
-          
-          if (deploymentIndicators.some(phrase => messageContent.includes(phrase))) {
-            logger.debug(`Found Netlify deployment: ${netlifyHostname}`);
+
+
+        if (mentionsDeployment && latestNetlifyHostname) {
+            logger.debug(`Found Netlify deployment: ${latestNetlifyHostname}`);
             processedUserMessageIdRef.current = secondLastMessage.id;
             
             setTimeout(async () => {
               try {
                 const response = await fetch('/api/entri-links', {
                   method: 'POST',
-                  body: JSON.stringify({ hostname: netlifyHostname }),
+                  body: JSON.stringify({ hostname: latestNetlifyHostname }),
                 });
                 if (!response.ok) {
                   throw new Error(`API request failed with status ${response.status}`);
@@ -147,7 +216,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                   const entriConnectConfig: EntriConfig = {
                     "applicationId": entriResponse.applicationId,
                     "token": entriResponse.authToken,
-                    "userId": netlifyHostname!.split('.')[0],
+                    "userId": latestNetlifyHostname!.split('.')[0],
                     "dnsRecords": {
                       "domain": [
                         {
@@ -159,7 +228,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                         {
                           "type": "CNAME",
                           "host": "www",
-                          "value": netlifyHostname!,
+                          "value": latestNetlifyHostname!,
                           "ttl": 300
                         }
                       ],
@@ -167,7 +236,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                         {
                           "type": "CNAME",
                           "host": "{SUBDOMAIN}",
-                          "value": netlifyHostname!,
+                          "value": latestNetlifyHostname!,
                           "ttl": 300
                         }
                       ]
@@ -221,7 +290,6 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
         
         // If we get here, we didn't find a clear Netlify deployment message
         processedUserMessageIdRef.current = secondLastMessage.id;
-      }
     }
   }, [messages, isLoading, append]); 
 
