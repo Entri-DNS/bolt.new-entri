@@ -228,7 +228,7 @@ We'll configure the DNS records for you.
 
 <a href="${links.connectLink || '#'}">Set up DNS</a>
 or
-🌐 <strong>Get a new domain — totally FREE!</strong>
+🎉 <strong>Get a new domain — totally FREE!</strong>
 Grab a free domain and we'll set up all the DNS for Netlify, instantly.
 
 <a href="${links.sellLink || '#'}" target="_blank">Claim your free domain</a>`;
