@@ -135,7 +135,18 @@ async function entriLinksAction({ context, request }: ActionFunctionArgs) {
                 "userId": hostname.replace('.netlify.app', ''),
                 "applicationName": "Netlify",
                 "manualSetupDocumentation": "https://docs.netlify.com/domains/configure-domains/configure-external-dns/",
-                "sellVersion": "v3"
+                "sellVersion": "v3",
+                "successCallbackUrl":"https://bolt.new",
+                "sell":{
+                    "bg": "#1f77f8",
+                    "bgSecondary": "#1f77f8",
+                    "fg": "#fff",
+                    "fgSecondary": "#fff",
+                    "onPrimary": "#fff",
+                    "onSecondary": "#fff",
+                    "primary": "#1f77f8",
+                    "secondary": "#1f77f8"
+                }
             },
         }
 
