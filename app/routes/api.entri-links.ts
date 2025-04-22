@@ -139,9 +139,13 @@ async function entriLinksAction({ context, request }: ActionFunctionArgs) {
                 "successCallbackUrl":"https://bolt.new",
                 "whiteLabel": {
                     "theme": {
-                        "primary": "#1f77f8",
+                        "bg": "#000",
+                        "bgSecondary": "#000",
+                        "fg": "#fff",
+                        "fgSecondary": "#fff",
+                        "primary": "#000",
                         "onPrimary": "#fff",
-                        "secondary": "#1f77f8",
+                        "secondary": "#000",
                         "onSecondary": "#fff",
                     },
                     "sell": {
