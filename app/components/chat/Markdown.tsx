@@ -57,11 +57,17 @@ export const Markdown = memo(({ children, html = false, limitedMarkdown = false 
 
         return <pre {...rest}>{children}</pre>;
       },
-      a: ({ className, children, ...props }) => (
-        <a className={`inline-block mb-4 px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text bg-font-medium rounded transition-colors duration-150 ${className || ''}`} target="_blank" {...props}>
+      a: ({ className, children, ...props }) => {
+        const { href, ...rest } = props;
+
+        if (href?.includes('entri.')) {
+          return <a className={`inline-block mb-4 px-4 py-2 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text bg-font-medium rounded transition-colors duration-150 ${className || ''}`} target="_blank" {...props}>
           {children}
         </a>
-      ),
+        }
+
+        return <a className={className} {...rest}>{children}</a>;
+      },
     } satisfies Components;
   }, []);
 
