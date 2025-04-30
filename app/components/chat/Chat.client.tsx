@@ -70,6 +70,14 @@ interface ChatProps {
 export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProps) => {
   useShortcuts();
 
+  const isValidNetlifyHostname = (hostname: string | null): boolean => {
+    if (!hostname) return false;
+
+    // Check if it's a valid netlify.app subdomain
+    const netlifyRegex = /^[a-zA-Z0-9-]+\.netlify\.app$/;
+    return netlifyRegex.test(hostname);
+  };
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const processedUserMessageIdRef = useRef<string | null>(null); 
@@ -127,6 +135,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
           // Find all Netlify hostnames in this message
           while ((match = netlifyRegex.exec(message.content)) !== null) {
             const hostname = match[1];
+            if (isValidNetlifyHostname(hostname)) {
               // Check if the context suggests this is a deployment message
               const urlIndex = message.content.indexOf(hostname, match.index);
               const contextWindow = message.content.substring(
@@ -140,6 +149,7 @@ export const ChatImpl = memo(({ initialMessages, storeMessageHistory }: ChatProp
                 latestNetlifyHostname = hostname;
                 break; // Found a valid hostname in this message
               }
+            }
           }
 
           if (latestNetlifyHostname) break; // Stop scanning if we found a valid hostname
